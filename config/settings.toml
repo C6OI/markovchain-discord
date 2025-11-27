@@ -1,0 +1,9 @@
+[server]
+url = "http://127.0.0.1:5049"
+
+[database.pool]
+user = "marcha-discord"
+password = "marcha-discord"
+host = "localhost"
+dbname = "marcha-discord"
+port = 5432
