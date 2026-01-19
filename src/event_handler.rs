@@ -61,7 +61,7 @@ async fn answer_to_mention(app_state: &AppState, ctx: &Context, message: &Messag
 
     let _ = message.channel_id.broadcast_typing(ctx).await;
 
-    let text = match generate_from_scratch(app_state).await {
+    let text = match continue_message(app_state, message).await {
         Ok(text) => text,
         Err(err) => {
             warn!("Failed to generate a text for mention: {err}");
@@ -87,7 +87,7 @@ async fn generate_from_interval(app_state: &AppState, ctx: &Context, message: &M
 
     let _ = message.channel_id.broadcast_typing(ctx).await;
 
-    let text = generate_from_scratch(app_state).await.expect("Failed to generate the text");
+    let text = continue_message(app_state, message).await.expect("Failed to generate the text");
     message.channel_id.send_message(ctx, CreateMessage::new().content(text)).await.expect("Failed to send auto-generated text");
 }
 
@@ -126,8 +126,22 @@ async fn update_gen_interval(app_state: &AppState, guild_id: i64, channel_id: i6
     Ok(count == 0)
 }
 
-async fn generate_from_scratch(app_state: &AppState) -> anyhow::Result<String> {
-    generate(app_state, None, None).await
+async fn continue_message(app_state: &AppState, message: &Message) -> anyhow::Result<String> {
+    let start = message
+        .content
+        .split(' ')
+        .next_back()
+        .and_then(|s| ContentString::try_from(s).ok());
+
+    let mut text = generate(app_state, start, None)
+        .await
+        .map(|text| text.split_once(' ').unwrap_or((text.as_str(), "")).1.into());
+
+    if text.as_ref().is_ok_and(|text: &String| text.is_empty()) {
+        text = generate(app_state, None, None).await;
+    }
+
+    text
 }
 
 async fn generate(app_state: &AppState, start: Option<ContentString>, max_length: Option<usize>) -> anyhow::Result<String> {
