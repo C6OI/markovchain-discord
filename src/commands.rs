@@ -162,7 +162,7 @@ async fn continue_context_menu(ctx: Context<'_>, message: Message) -> Result<(),
     let app_state = ctx.data();
 
     let payload = GeneratePayload {
-        max_length: Some((message.content.len() as f64 * 1.5) as usize),
+        max_length: None,
         start: Some(ContentString::new(message.content)?),
     };
 
