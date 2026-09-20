@@ -18,3 +18,4 @@ tracing-appender = "0.2.3"
 tokio-postgres = "0.7.15"
 deadpool-postgres = { version = "0.14.1", features = ["serde"] }
 rand = "0.10.0-rc.5"
+chrono = "0.4.45"

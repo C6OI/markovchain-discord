@@ -5,6 +5,7 @@ mod settings;
 mod commands;
 mod migrations;
 mod database;
+mod dokich;
 
 use crate::event_handler::Handler;
 use crate::settings::Settings;
@@ -22,6 +23,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 use crate::commands::collect_commands;
 use crate::database::create_pool;
+use crate::dokich::DokichHandler;
 use crate::migrations::Migrations;
 
 #[allow(unused)]
@@ -98,6 +100,7 @@ async fn main() {
 
     let mut discord = serenity::Client::builder(&app_state.settings.discord.token, intents)
         .event_handler(Handler { app_state })
+        .event_handler(DokichHandler::default())
         .framework(framework)
         .await
         .expect("Failed to build Discord client");
