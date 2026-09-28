@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use serenity::all::{Context, Message, Timestamp};
+use serenity::all::{Context, Member, Message, Timestamp};
 use serenity::async_trait;
 use serenity::prelude::EventHandler;
 use tokio::sync::Mutex;
@@ -43,20 +43,43 @@ impl EventHandler for DokichHandler {
 
             *messages_count += 1;
 
-            if *messages_count >= MESSAGES_PER_DAY
-                && member.communication_disabled_until.is_none()
-                && let Err(err) = member
-                    .disable_communication_until_datetime(
-                        &ctx.http,
-                        Timestamp::from_unix_timestamp(*reset_at_unix)
-                            .expect("next reset timestamp must be valid"),
-                    )
-                    .await
+            if *messages_count >= MESSAGES_PER_DAY && member.communication_disabled_until.is_none()
             {
-                error!("Failed to disable communication until datetime: {err}");
+                let disable_until = Timestamp::from_unix_timestamp(*reset_at_unix)
+                    .expect("next reset timestamp must be valid");
+
+                if let Err(err) =
+                    disable_communication(&mut member, &ctx, &new_message, disable_until).await
+                {
+                    error!("Error disabling communication: {err:#}");
+                }
             }
         }
     }
+}
+
+async fn disable_communication(
+    member: &mut Member,
+    ctx: &Context,
+    new_message: &Message,
+    time: Timestamp,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    member
+        .disable_communication_until_datetime(&ctx.http, time)
+        .await
+        .context("Failed to disable communication")?;
+
+    new_message
+        .reply_ping(
+            &ctx.http,
+            "https://tenor.com/view/stfu-gif-6401003389838608981",
+        )
+        .await
+        .context("Failed to send reply message")?;
+
+    Ok(())
 }
 
 fn next_midnight_utc_plus_3_unix() -> i64 {
