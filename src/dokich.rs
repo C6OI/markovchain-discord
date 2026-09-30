@@ -3,7 +3,7 @@ use serenity::all::{Context, Member, Message, Timestamp};
 use serenity::async_trait;
 use serenity::prelude::EventHandler;
 use tokio::sync::Mutex;
-use tracing::error;
+use tracing::{error, warn};
 
 const MESSAGES_PER_DAY: usize = 25;
 const GUILD_ID: u64 = 1196050317607972934;
@@ -43,6 +43,8 @@ impl EventHandler for DokichHandler {
 
             *messages_count += 1;
 
+            warn!("Messages count: {messages_count}");
+
             if *messages_count >= MESSAGES_PER_DAY && member.communication_disabled_until.is_none()
             {
                 let disable_until = Timestamp::from_unix_timestamp(*reset_at_unix)
@@ -53,6 +55,8 @@ impl EventHandler for DokichHandler {
                 {
                     error!("Error disabling communication: {err:#}");
                 }
+
+                warn!("Disabled communication until {disable_until}");
             }
         }
     }
