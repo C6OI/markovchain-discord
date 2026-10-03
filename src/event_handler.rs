@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use crate::AppState;
 use deadpool_postgres::GenericClient;
 use markovchain_client_lib::content_string::ContentString;
 use markovchain_client_lib::{GeneratePayload, InputPayload};
@@ -7,8 +7,8 @@ use serenity::all::{Context, Message, Ready};
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::prelude::EventHandler;
+use std::sync::Arc;
 use tracing::{debug, error, info, warn};
-use crate::AppState;
 
 pub struct Handler {
     pub(crate) app_state: Arc<AppState>,
@@ -56,7 +56,13 @@ async fn save_input(app_state: &AppState, input: &str) {
 
 async fn answer_to_mention(app_state: &AppState, ctx: &Context, message: &Message) {
     if !message.mentions_me(ctx).await.unwrap_or(false) {
-        return;
+        let Ok(channel) = message.channel(&ctx.http).await else {
+            return;
+        };
+
+        if channel.private().is_none() {
+            return;
+        }
     }
 
     let _ = message.channel_id.broadcast_typing(ctx).await;
@@ -82,41 +88,75 @@ async fn generate_from_interval(app_state: &AppState, ctx: &Context, message: &M
     let guild_id = i64::try_from(guild_id.get()).unwrap();
     let channel_id = i64::try_from(message.channel_id.get()).unwrap();
 
-    let should_generate = update_gen_interval(app_state, guild_id, channel_id).await.expect("Failed to update generation interval");
-    if !should_generate { return; }
+    let should_generate = update_gen_interval(app_state, guild_id, channel_id)
+        .await
+        .expect("Failed to update generation interval");
+    if !should_generate {
+        return;
+    }
 
     let _ = message.channel_id.broadcast_typing(ctx).await;
 
-    let text = continue_message(app_state, message).await.expect("Failed to generate the text");
-    message.channel_id.send_message(ctx, CreateMessage::new().content(text)).await.expect("Failed to send auto-generated text");
+    let text = continue_message(app_state, message)
+        .await
+        .expect("Failed to generate the text");
+    message
+        .channel_id
+        .send_message(ctx, CreateMessage::new().content(text))
+        .await
+        .expect("Failed to send auto-generated text");
 }
 
-async fn update_gen_interval(app_state: &AppState, guild_id: i64, channel_id: i64) -> anyhow::Result<bool> {
-    let client = app_state.db_pool.get().await.expect("Failed to get the db client from the pool");
+async fn update_gen_interval(
+    app_state: &AppState,
+    guild_id: i64,
+    channel_id: i64,
+) -> anyhow::Result<bool> {
+    let client = app_state
+        .db_pool
+        .get()
+        .await
+        .expect("Failed to get the db client from the pool");
 
-    let statement = client.prepare_cached(/* language=postgresql */ r"
+    let statement = client
+        .prepare_cached(
+            /* language=postgresql */
+            r"
         UPDATE enabled_guilds
         SET msgs_until_gen = msgs_until_gen - 1
         WHERE guild_id = $1 AND channel_id = $2
         RETURNING msgs_until_gen, interval;
-    ").await?;
+    ",
+        )
+        .await?;
 
     let Some(row) = client
         .query_opt(&statement, &[&guild_id, &channel_id])
-        .await? else { return Ok(false); };
+        .await?
+    else {
+        return Ok(false);
+    };
 
     let count: i16 = row.get("msgs_until_gen");
 
     // reset the `msgs_until_gen` if it is <= 0
     if count <= 0 {
         let interval: Option<i16> = row.get("interval");
-        let new_count = interval.map_or_else(|| app_state.uniform.sample(&mut rand::rng()) as i16, |iv| iv);
+        let new_count = interval.map_or_else(
+            || app_state.uniform.sample(&mut rand::rng()) as i16,
+            |iv| iv,
+        );
 
-        let statement = client.prepare_cached(/* language=postgresql */ r"
+        let statement = client
+            .prepare_cached(
+                /* language=postgresql */
+                r"
             UPDATE enabled_guilds
             SET msgs_until_gen = $3
             WHERE guild_id = $1 AND channel_id = $2;
-        ").await?;
+        ",
+            )
+            .await?;
 
         client
             .execute(&statement, &[&guild_id, &channel_id, &new_count])
@@ -144,7 +184,11 @@ async fn continue_message(app_state: &AppState, message: &Message) -> anyhow::Re
     text
 }
 
-async fn generate(app_state: &AppState, start: Option<ContentString>, max_length: Option<usize>) -> anyhow::Result<String> {
+async fn generate(
+    app_state: &AppState,
+    start: Option<ContentString>,
+    max_length: Option<usize>,
+) -> anyhow::Result<String> {
     let payload = GeneratePayload { start, max_length };
     let text = app_state.markov_chain.generate(payload).await?;
     Ok(text)
