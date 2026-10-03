@@ -45,8 +45,7 @@ impl EventHandler for DokichHandler {
 
             warn!("Messages count: {messages_count}");
 
-            if *messages_count >= MESSAGES_PER_DAY && member.communication_disabled_until.is_none()
-            {
+            if *messages_count >= MESSAGES_PER_DAY {
                 let disable_until = Timestamp::from_unix_timestamp(*reset_at_unix)
                     .expect("next reset timestamp must be valid");
 
